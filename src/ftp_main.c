@@ -45,6 +45,8 @@ static void main_loop(int listen_fd)
     int nready;
     socklen_t clilen;
     struct sockaddr_in cliaddr;
+    char buf[4096];
+    ssize_t n;
     int i;
 
     fds[0].fd = listen_fd;
@@ -60,6 +62,8 @@ static void main_loop(int listen_fd)
         if (fds[0].revents & POLLIN) {
             clilen = sizeof(cliaddr);
             conn_fd = accept(fds[0].fd, (struct sockaddr *) &cliaddr, &clilen);
+
+            printf("new client connected\n");
 
             for (i = 1; i < FTP_OPEN_MAX; ++i) {
                 if (fds[i].fd == FTP_AVAILABLE_FD) {
@@ -77,9 +81,29 @@ static void main_loop(int listen_fd)
             }
         }
 
+        /* check all clients for data */
         for (i = 1; i < FTP_OPEN_MAX; ++i) {
             if (fds[i].fd == FTP_AVAILABLE_FD) {
                 continue;
+            }
+
+            if (fds[i].revents & POLLIN) {
+                if ((n = recv(fds[i].fd, buf, sizeof(buf), 0)) < 0) {
+                    perror("recv");
+                    close(fds[i].fd);
+                    fds[i].fd = FTP_AVAILABLE_FD;
+                }
+                else if (n == 0) {
+                    printf("client disconnected\n");
+                    fds[i].fd = FTP_AVAILABLE_FD;
+                }
+                else {
+                    printf("read %ld bytes\n", n);
+                }
+            }
+
+            if (--nready <= 0) {
+                break;
             }
         }
     }
