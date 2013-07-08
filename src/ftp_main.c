@@ -39,7 +39,7 @@ int main()
 
 static void main_loop(int listen_fd)
 {
-    nfds_t nfds = 1;
+    nfds_t nfds = FTP_OPEN_MAX;
     struct pollfd fds[FTP_OPEN_MAX];
     int conn_fd;
     int nready;
@@ -73,6 +73,7 @@ static void main_loop(int listen_fd)
                 if (fds[i].fd == FTP_AVAILABLE_FD) {
                     fds[i].fd = conn_fd;
                     fds[i].events = POLLIN;
+                    break;
                 }
             }
 
@@ -104,10 +105,10 @@ static void main_loop(int listen_fd)
                 else {
                     printf("read %ld bytes\n", n);
                 }
-            }
 
-            if (--nready <= 0) {
-                break;
+                if (--nready <= 0) {
+                    break;
+                }
             }
         }
     }
