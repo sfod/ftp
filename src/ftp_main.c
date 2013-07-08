@@ -57,6 +57,10 @@ static void main_loop(int listen_fd)
 
     while (1) {
         nready = poll(fds, nfds, FTP_INF_TIME);
+        if (nready < 0) {
+            perror("poll");
+            exit(EXIT_FAILURE);
+        }
 
         /* got new connection */
         if (fds[0].revents & POLLIN) {
