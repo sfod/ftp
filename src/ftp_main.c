@@ -117,12 +117,20 @@ static void main_loop(int listen_fd)
 static int init_listen_fd(int *listen_fd)
 {
     int fd;
+    int y;
+    struct sockaddr_in servaddr;
+
     if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");
         return -1;
     }
 
-    struct sockaddr_in servaddr;
+    y = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &y, sizeof(y)) < 0) {
+        perror("setsockopt");
+        return -1;
+    }
+
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
