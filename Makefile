@@ -1,7 +1,7 @@
 BUILD_DIR := ./build
 OBJ_DIR := $(BUILD_DIR)/obj
 
-MAIN_OBJECTS = $(addprefix $(OBJ_DIR)/, ftp_main.o)
+MAIN_OBJECTS = $(addprefix $(OBJ_DIR)/, ftp_main.o ftp_proto.o)
 
 ALL_OBJECTS = $(MAIN_OBJECTS)
 
