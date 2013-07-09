@@ -11,6 +11,8 @@
 
 #include <poll.h>
 
+#include "ftp_proto.h"
+
 
 #define FTP_INF_TIME -1
 #define FTP_AVAILABLE_FD -1
@@ -19,7 +21,14 @@
 #define FTP_PORT 13782
 
 
+struct file_t {
+    FILE *fh;
+};
+
+
 static void main_loop(int listen_fd);
+static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
+        struct file_t *file);
 static int init_listen_fd(int *listen_fd);
 static int set_nonblocking_mode(int fd);
 
@@ -41,6 +50,8 @@ static void main_loop(int listen_fd)
 {
     nfds_t nfds = FTP_OPEN_MAX;
     struct pollfd fds[FTP_OPEN_MAX];
+    struct file_t files[FTP_OPEN_MAX];
+    struct ftp_proto_t protos[FTP_OPEN_MAX];
     int conn_fd;
     int nready;
     socklen_t clilen;
@@ -54,6 +65,8 @@ static void main_loop(int listen_fd)
     for (i = 1; i < FTP_OPEN_MAX; ++i) {
         fds[i].fd = FTP_AVAILABLE_FD;
     }
+
+    memset(files, 0, sizeof(files));
 
     while (1) {
         nready = poll(fds, nfds, FTP_INF_TIME);
@@ -97,13 +110,18 @@ static void main_loop(int listen_fd)
                     perror("recv");
                     close(fds[i].fd);
                     fds[i].fd = FTP_AVAILABLE_FD;
+                    memset(protos + i, 0, sizeof(protos[i]));
                 }
                 else if (n == 0) {
                     printf("client disconnected\n");
                     fds[i].fd = FTP_AVAILABLE_FD;
+                    memset(protos + i, 0, sizeof(protos[i]));
+                    fclose(files[i].fh);
                 }
-                else {
-                    printf("read %ld bytes\n", n);
+                else if (process_client_data(buf, n, protos + i, files + i) < 0) {
+                    fprintf(stderr, "failed to parse client data\n");
+                    close(fds[i].fd);
+                    fds[i].fd = FTP_AVAILABLE_FD;
                 }
 
                 if (--nready <= 0) {
@@ -112,6 +130,43 @@ static void main_loop(int listen_fd)
             }
         }
     }
+}
+
+static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
+        struct file_t *file)
+{
+    size_t used;
+    int rc;
+
+    switch (proto->status) {
+    case FTP_HEADER_COMPLETED:
+        if (fwrite(buf, n, sizeof(*buf), file->fh) != n) {
+            perror("write");
+            fclose(file->fh);
+            return -1;
+        }
+        break;
+    default:
+        if ((rc = ftp_proto_parse_header(buf, n, proto, &used)) < 0) {
+            fprintf(stderr, "failed to parse protocol header\n");
+            memset(proto, 0, sizeof(*proto));
+            return -1;
+        }
+        else if (rc == 1) {
+            if ((file->fh = fopen(proto->filename, "a")) == NULL) {
+                perror("fopen");
+                return -1;
+            }
+            if ((n - used != 0)
+                    && (fwrite(buf, n - used, sizeof(*buf), file->fh) != n - used)) {
+                perror("write");
+                fclose(file->fh);
+                return -1;
+            }
+        }
+    }
+
+    return 0;
 }
 
 static int init_listen_fd(int *listen_fd)
@@ -128,7 +183,6 @@ static int init_listen_fd(int *listen_fd)
     y = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &y, sizeof(y)) < 0) {
         perror("setsockopt");
-        return -1;
     }
 
     memset(&servaddr, 0, sizeof(servaddr));
