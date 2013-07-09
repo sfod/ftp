@@ -141,9 +141,8 @@ static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
 
     switch (proto->status) {
     case FTP_HEADER_COMPLETED:
-        if (fwrite(buf, n, sizeof(*buf), file->fh) != n) {
-            perror("write");
-            fclose(file->fh);
+        if (fwrite(buf, sizeof(*buf), n, file->fh) != n) {
+            fprintf(stderr, "fwrite failed\n");
             return -1;
         }
         break;
@@ -159,9 +158,8 @@ static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
                 return -1;
             }
             if ((n - used != 0)
-                    && (fwrite(buf, n - used, sizeof(*buf), file->fh) != n - used)) {
-                perror("write");
-                fclose(file->fh);
+                    && (fwrite(buf, sizeof(*buf), n - used, file->fh) != n - used)) {
+                fprintf(stderr, "fwrite failed\n");
                 return -1;
             }
         }
