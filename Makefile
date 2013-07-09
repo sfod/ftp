@@ -1,11 +1,11 @@
 BUILD_DIR := ./build
 OBJ_DIR := $(BUILD_DIR)/obj
 
-MAIN_OBJECTS = $(addprefix $(OBJ_DIR)/, ftp_main.o)
+SERVER_OBJECTS = $(addprefix $(OBJ_DIR)/, ftp_server.o)
 UTIL_OBJECTS = $(addprefix $(OBJ_DIR)/, ftp_proto.o)
 TEST_OBJECTS = $(addprefix $(OBJ_DIR)/, test_ftp_proto.o)
 
-ALL_OBJECTS = $(MAIN_OBJECTS) $(UTIL_OBJECTS) $(TEST_OBJECTS)
+ALL_OBJECTS = $(SERVER_OBJECTS) $(UTIL_OBJECTS) $(TEST_OBJECTS)
 
 
 INC_DIRS = ./src
@@ -20,7 +20,7 @@ ftpserver: $(OBJ_DIR) $(BUILD_DIR)/ftpserver
 test_ftp_proto: $(OBJ_DIR) $(BUILD_DIR)/test_ftp_proto
 
 
-$(BUILD_DIR)/ftpserver: $(MAIN_OBJECTS) $(UTIL_OBJECTS)
+$(BUILD_DIR)/ftpserver: $(SERVER_OBJECTS) $(UTIL_OBJECTS)
 	$(CC) $(CC_FLAGS) -o $@ $^ $(addprefix -l, $(LIBS))
 
 $(BUILD_DIR)/test_ftp_proto: $(TEST_OBJECTS) $(UTIL_OBJECTS)
@@ -44,3 +44,4 @@ $(OBJ_DIR):
 clean:
 	-rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d)
 	-rm -f $(BUILD_DIR)/ftpserver
+	-rm -f $(BUILD_DIR)/test_ftp_proto
