@@ -11,6 +11,7 @@
 
 #include <poll.h>
 
+#include "ftp.h"
 #include "ftp_proto.h"
 
 
@@ -18,7 +19,7 @@
 #define FTP_AVAILABLE_FD -1
 #define FTP_OPEN_MAX 1024
 
-#define FTP_PORT 13782
+#define FTP_SOCK_BUF_SIZE 4096
 
 
 struct file_t {
@@ -56,7 +57,7 @@ static void main_loop(int listen_fd)
     int nready;
     socklen_t clilen;
     struct sockaddr_in cliaddr;
-    char buf[4096];
+    char buf[FTP_SOCK_BUF_SIZE];
     ssize_t n;
     int i;
 
