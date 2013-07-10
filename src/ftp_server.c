@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200112L
+#define _GNU_SOURCE
 
 #include <errno.h>
 #include <fcntl.h>
@@ -215,6 +216,13 @@ static void main_loop(int listen_fd)
                     clean_client(fds + i, files + i, protos + i);
                 }
 
+                if (--nready <= 0) {
+                    break;
+                }
+            }
+            else if (fds[i].revents & (POLLERR | POLLRDHUP | POLLHUP | POLLNVAL)) {
+                fprintf(stderr, "client disconnected\n");
+                clean_client(fds + i, files + i, protos + i);
                 if (--nready <= 0) {
                     break;
                 }
