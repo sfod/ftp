@@ -129,62 +129,6 @@ int main()
     return EXIT_SUCCESS;
 }
 
-static void *pthread_sighandler(void *p)
-{
-    sigset_t *set = (sigset_t *) p;
-    int sig;
-
-    while (g_is_running) {
-        if (sigwait(set, &sig) < 0) {
-            continue;
-        }
-
-        switch (sig) {
-        case SIGTERM:
-        case SIGINT:
-            fprintf(stderr, "shutting down server\n");
-            g_is_running = 0;
-            break;
-        default:
-            fprintf(stderr, "got unsupported signal, ignoring\n");
-            break;
-        }
-    }
-
-    return NULL;
-}
-
-static void *pthread_process_req(void *p)
-{
-    struct req_t *req;
-    struct timespec ts_sem = {0, 0};
-
-    while (g_is_running) {
-        ts_sem.tv_sec = time(NULL) + 1;
-        if (sem_timedwait(&g_sem_req, &ts_sem) == -1) {
-            if (errno == EINTR || errno == ETIMEDOUT) {
-                continue;
-            }
-        }
-
-        pthread_mutex_lock(&g_mutex_req);
-        req = TAILQ_FIRST(&g_req_queue);
-        TAILQ_REMOVE(&g_req_queue, req, entries);
-        pthread_mutex_unlock(&g_mutex_req);
-
-        if (fwrite(req->s, sizeof(*req->s), req->n, req->file.fh)
-                != req->n * sizeof(*req->s)) {
-            fprintf(stderr, "failed to write data\n");
-            invalidate_client(req->cl_idx);
-        }
-
-        free(req->s);
-        free(req);
-    }
-
-    return NULL;
-}
-
 static void main_loop(int listen_fd)
 {
     nfds_t nfds = FTP_OPEN_MAX;
@@ -281,6 +225,71 @@ static void main_loop(int listen_fd)
     shutdown(listen_fd, SHUT_RDWR);
 }
 
+static void *pthread_sighandler(void *p)
+{
+    sigset_t *set = (sigset_t *) p;
+    int sig;
+
+    while (g_is_running) {
+        if (sigwait(set, &sig) < 0) {
+            continue;
+        }
+
+        switch (sig) {
+        case SIGTERM:
+        case SIGINT:
+            fprintf(stderr, "shutting down server\n");
+            g_is_running = 0;
+            break;
+        default:
+            fprintf(stderr, "got unsupported signal, ignoring\n");
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+static void *pthread_process_req(void *p)
+{
+    struct req_t *req;
+    struct timespec ts_sem = {0, 0};
+
+    while (g_is_running) {
+        ts_sem.tv_sec = time(NULL) + 1;
+        if (sem_timedwait(&g_sem_req, &ts_sem) == -1) {
+            if (errno == EINTR || errno == ETIMEDOUT) {
+                continue;
+            }
+        }
+
+        pthread_mutex_lock(&g_mutex_req);
+        req = TAILQ_FIRST(&g_req_queue);
+        TAILQ_REMOVE(&g_req_queue, req, entries);
+        pthread_mutex_unlock(&g_mutex_req);
+
+        if (fwrite(req->s, sizeof(*req->s), req->n, req->file.fh)
+                != req->n * sizeof(*req->s)) {
+            fprintf(stderr, "failed to write data\n");
+            invalidate_client(req->cl_idx);
+        }
+
+        free(req->s);
+        free(req);
+    }
+
+    return NULL;
+}
+
+static void invalidate_client(int cl_idx)
+{
+    struct cl_t *cl = malloc(sizeof(struct cl_t));
+    cl->idx = cl_idx;
+    pthread_mutex_lock(&g_mutex_cl);
+    TAILQ_INSERT_TAIL(&g_cl_queue, cl, entries);
+    pthread_mutex_unlock(&g_mutex_cl);
+}
+
 static void clean_client(struct pollfd *fd, struct file_t *file,
         struct ftp_proto_t *proto)
 {
@@ -291,15 +300,6 @@ static void clean_client(struct pollfd *fd, struct file_t *file,
         file->fh = NULL;
     }
     memset(proto, 0, sizeof(*proto));
-}
-
-static void invalidate_client(int cl_idx)
-{
-    struct cl_t *cl = malloc(sizeof(struct cl_t));
-    cl->idx = cl_idx;
-    pthread_mutex_lock(&g_mutex_cl);
-    TAILQ_INSERT_TAIL(&g_cl_queue, cl, entries);
-    pthread_mutex_unlock(&g_mutex_cl);
 }
 
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
