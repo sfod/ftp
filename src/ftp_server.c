@@ -160,6 +160,9 @@ static void *pthread_process_req(void *p)
                 != req->n * sizeof(*req->s)) {
             fprintf(stderr, "failed to write data\n");
         }
+
+        free(req->s);
+        free(req);
     }
 
     return NULL;
