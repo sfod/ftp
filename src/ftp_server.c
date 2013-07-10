@@ -370,7 +370,7 @@ static int init_listen_fd(int *listen_fd)
     }
 
     y = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &y, sizeof(y)) < 0) {
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &y, sizeof(y)) < 0) {
         perror("setsockopt");
     }
 
