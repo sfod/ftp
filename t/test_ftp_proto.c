@@ -25,7 +25,7 @@ int init_suite()
     char *s;
 
     strcpy(src_filename, "file");
-    strcpy(dst_filename, "file");
+    strcpy(dst_filename, "file_new");
     strcpy(content, "1234567890abcdefghijklmnopqrstuvwxyz");
 
     s = msg;
@@ -61,44 +61,76 @@ int clean_suite()
     return 0;
 }
 
-void test()
+void test_parse_exact()
 {
     struct ftp_proto_t proto;
-    size_t used;
+    size_t used = 0;
+    char *s = msg;
+    int n;
+
+    memset(&proto, 0, sizeof(proto));
+
+    n = 20;
+    CU_ASSERT_EQUAL_FATAL(1, ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_EQUAL_FATAL(FTP_HEADER_COMPLETED, proto.status);
+    CU_ASSERT_EQUAL_FATAL(20, used);
+}
+
+void test_parse_more()
+{
+    struct ftp_proto_t proto;
+    size_t used = 0;
+    char *s = msg;
+    int n;
+
+    memset(&proto, 0, sizeof(proto));
+
+    n = 22;
+    CU_ASSERT_EQUAL_FATAL(1, ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_EQUAL_FATAL(FTP_HEADER_COMPLETED, proto.status);
+    CU_ASSERT_EQUAL_FATAL(20, used);
+}
+
+void test_parse_parts()
+{
+    struct ftp_proto_t proto;
+    size_t used = 0;
     char *s = msg;
     int n;
 
     memset(&proto, 0, sizeof(proto));
 
     n = 2;
-    CU_ASSERT_FATAL(0 == ftp_proto_parse_header(s, n, &proto, &used));
-    CU_ASSERT_FATAL(FTP_HEADER_NEED_SRC_LEN == proto.status);
+    used = 0;
+    CU_ASSERT_EQUAL_FATAL(0, ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_EQUAL_FATAL(FTP_HEADER_NEED_SRC_LEN, proto.status);
     s += n;
-    print_proto(&proto);
 
     n = 4;
-    CU_ASSERT_FATAL(0 == ftp_proto_parse_header(s, n, &proto, &used));
-    CU_ASSERT_FATAL(FTP_HEADER_NEED_SRC_NAME == proto.status);
+    used = 0;
+    CU_ASSERT_EQUAL_FATAL(0, ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_EQUAL_FATAL(FTP_HEADER_NEED_SRC_NAME, proto.status);
     s += n;
-    print_proto(&proto);
 
     n = 4;
-    CU_ASSERT_FATAL(0 == ftp_proto_parse_header(s, n, &proto, &used));
-    CU_ASSERT_FATAL(FTP_HEADER_NEED_DST_LEN == proto.status);
+    used = 0;
+    CU_ASSERT_EQUAL_FATAL(0, ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_EQUAL_FATAL(FTP_HEADER_NEED_DST_LEN, proto.status);
     s += n;
-    print_proto(&proto);
 
     n = 4;
-    CU_ASSERT_FATAL(0 == ftp_proto_parse_header(s, n, &proto, &used));
-    CU_ASSERT_FATAL(FTP_HEADER_NEED_DST_NAME == proto.status);
+    used = 0;
+    CU_ASSERT_EQUAL_FATAL(0, ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_EQUAL_FATAL(FTP_HEADER_NEED_DST_NAME, proto.status);
     s += n;
-    print_proto(&proto);
 
-    n = 4;
-    CU_ASSERT_FATAL(1 == ftp_proto_parse_header(s, n, &proto, &used));
-    CU_ASSERT_FATAL(FTP_HEADER_COMPLETED == proto.status);
+    n = 10;
+    used = 0;
+    CU_ASSERT_EQUAL_FATAL(1, ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_EQUAL_FATAL(FTP_HEADER_COMPLETED, proto.status);
     s += n;
-    print_proto(&proto);
+
+    CU_ASSERT_EQUAL_FATAL(6, used);
 }
 
 int main()
@@ -115,7 +147,9 @@ int main()
         return CU_get_error();
     }
 
-    if (CU_add_test(pSuite, "parsing test", test) == NULL) {
+    if ((CU_add_test(pSuite, "parsing test", test_parse_exact) == NULL)
+            || (CU_add_test(pSuite, "parsing test", test_parse_more) == NULL)
+            || (CU_add_test(pSuite, "parsing test", test_parse_parts) == NULL)) {
         CU_cleanup_registry();
         return CU_get_error();
     }
