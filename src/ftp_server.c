@@ -36,6 +36,7 @@ struct file_t {
 };
 
 struct req_t {
+    int cl_idx;
     struct file_t file;
     char *s;
     size_t n;
@@ -46,7 +47,9 @@ struct req_t {
 static void main_loop(int listen_fd);
 void *pthread_sighandler(void *p);
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
-        struct file_t *file);
+        struct file_t *file, int cl_idx);
+static void write_data(const char *s, size_t n, const struct file_t *file,
+        int cl_idx);
 static int init_listen_fd(int *listen_fd);
 static int set_nonblocking_mode(int fd);
 
@@ -61,7 +64,6 @@ volatile int g_is_running = 1;
 int main()
 {
     TAILQ_INIT(&g_req_queue);
-
 
     if (pthread_mutex_init(&g_mutex_req, NULL) < 0) {
         perror("pthread_mutex_init");
@@ -216,7 +218,7 @@ static void main_loop(int listen_fd)
                     memset(protos + i, 0, sizeof(protos[i]));
                     fclose(files[i].fh);
                 }
-                else if (process_client_data(buf, n, protos + i, files + i) < 0) {
+                else if (process_client_data(buf, n, protos + i, files + i, i) < 0) {
                     fprintf(stderr, "failed to parse client data\n");
                     close(fds[i].fd);
                     fds[i].fd = FTP_AVAILABLE_FD;
@@ -233,17 +235,14 @@ static void main_loop(int listen_fd)
 }
 
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
-        struct file_t *file)
+        struct file_t *file, int cl_idx)
 {
     size_t used;
     int rc;
 
     switch (proto->status) {
     case FTP_HEADER_COMPLETED:
-        if (fwrite(buf, sizeof(*buf), n, file->fh) != n) {
-            fprintf(stderr, "fwrite failed\n");
-            return -1;
-        }
+        write_data(buf, n, file, cl_idx);
         break;
     default:
         if ((rc = ftp_proto_parse_header(buf, n, proto, &used)) < 0) {
@@ -252,20 +251,35 @@ static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
             return -1;
         }
         else if (rc == 1) {
-            printf("writing to %s\n", proto->dst_filename);
             if ((file->fh = fopen(proto->dst_filename, "w")) == NULL) {
                 perror("fopen");
                 return -1;
             }
-            if ((n - used != 0)
-                    && (fwrite(buf, sizeof(*buf), n - used, file->fh) != n - used)) {
-                fprintf(stderr, "fwrite failed\n");
+            if (n - used != 0) {
+                write_data(buf + used, n - used, file, cl_idx);
                 return -1;
             }
         }
     }
 
     return 0;
+}
+
+static void write_data(const char *s, size_t n, const struct file_t *file,
+        int cl_idx)
+{
+    struct req_t *req = malloc(sizeof(struct req_t));
+    req->cl_idx = cl_idx;
+    req->file = *file;
+    req->s = malloc(n);
+    req->n = n;
+    memcpy(req->s, s, n);
+
+    pthread_mutex_lock(&g_mutex_req);
+    TAILQ_INSERT_TAIL(&g_req_queue, req, entries);
+    pthread_mutex_unlock(&g_mutex_req);
+
+    sem_post(&g_sem_req);
 }
 
 static int init_listen_fd(int *listen_fd)
