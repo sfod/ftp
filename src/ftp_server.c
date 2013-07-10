@@ -1,3 +1,6 @@
+#define _POSIX_C_SOURCE 200112L
+
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
@@ -10,6 +13,12 @@
 #include <sys/socket.h>
 
 #include <poll.h>
+
+#include <pthread.h>
+#include <semaphore.h>
+#include <signal.h>
+
+#include <sys/queue.h>
 
 #include "ftp.h"
 #include "ftp_proto.h"
@@ -26,16 +35,57 @@ struct file_t {
     FILE *fh;
 };
 
+struct req_t {
+    struct file_t file;
+    char *s;
+    size_t n;
+    TAILQ_ENTRY(req_t) entries;
+};
+
 
 static void main_loop(int listen_fd);
+void *pthread_sighandler(void *p);
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
         struct file_t *file);
 static int init_listen_fd(int *listen_fd);
 static int set_nonblocking_mode(int fd);
 
 
+pthread_mutex_t g_mutex_req;
+sem_t g_sem_req;
+
+TAILQ_HEAD(, req_t) g_req_queue;
+
+volatile int g_is_running = 1;
+
 int main()
 {
+    TAILQ_INIT(&g_req_queue);
+
+
+    if (pthread_mutex_init(&g_mutex_req, NULL) < 0) {
+        perror("pthread_mutex_init");
+        return EXIT_FAILURE;
+    }
+
+    if (sem_init(&g_sem_req, 0, 0) < 0) {
+        perror("sem_init");
+        return EXIT_FAILURE;
+    }
+
+    sigset_t set;
+    sigfillset(&set);
+    pthread_sigmask(SIG_BLOCK, &set, NULL);
+    pthread_t sig_tid;
+    if (pthread_create(&sig_tid, NULL, &pthread_sighandler, (void *) &set) != 0) {
+        perror("pthread_create");
+        return EXIT_FAILURE;
+    }
+    if (pthread_detach(sig_tid) < 0) {
+        perror("pthread_detach");
+        return EXIT_FAILURE;
+    }
+
     int listen_fd;
     if (init_listen_fd(&listen_fd) < 0) {
         fprintf(stderr, "failed to initialize socket\n");
@@ -45,6 +95,50 @@ int main()
     main_loop(listen_fd);
 
     return EXIT_SUCCESS;
+}
+
+void *pthread_sighandler(void *p)
+{
+    sigset_t *set = (sigset_t *) p;
+    int sig;
+
+    while (g_is_running) {
+        if (sigwait(set, &sig) < 0) {
+            continue;
+        }
+
+        switch (sig) {
+        case SIGTERM:
+        case SIGINT:
+            fprintf(stderr, "shutting down server\n");
+            g_is_running = 0;
+            break;
+        default:
+            fprintf(stderr, "got unsupported signal, ignoring\n");
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+void *pthread_write_file(void *p)
+{
+    struct timespec ts_sem = {0, 0};
+
+    while (g_is_running) {
+        ts_sem.tv_sec = time(NULL) + 1;
+        if (sem_timedwait(&g_sem_req, &ts_sem) == -1) {
+            if (errno == EINTR || errno == ETIMEDOUT) {
+                continue;
+            }
+        }
+
+        pthread_mutex_lock(&g_mutex_req);
+        pthread_mutex_unlock(&g_mutex_req);
+    }
+
+    return NULL;
 }
 
 static void main_loop(int listen_fd)
@@ -69,7 +163,7 @@ static void main_loop(int listen_fd)
 
     memset(files, 0, sizeof(files));
 
-    while (1) {
+    while (g_is_running) {
         nready = poll(fds, nfds, FTP_INF_TIME);
         if (nready < 0) {
             perror("poll");
@@ -131,6 +225,8 @@ static void main_loop(int listen_fd)
             }
         }
     }
+
+    shutdown(listen_fd, SHUT_RDWR);
 }
 
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
