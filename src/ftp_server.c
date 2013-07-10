@@ -156,8 +156,10 @@ static void *pthread_process_req(void *p)
         TAILQ_REMOVE(&g_req_queue, req, entries);
         pthread_mutex_unlock(&g_mutex_req);
 
-
-        printf("printing %ld bytes for client %d\n", req->n, req->cl_idx);
+        if (fwrite(req->s, sizeof(*req->s), req->n, req->file.fh)
+                != req->n * sizeof(*req->s)) {
+            fprintf(stderr, "failed to write data\n");
+        }
     }
 
     return NULL;
