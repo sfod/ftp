@@ -4,71 +4,125 @@
 #include <stdio.h>
 #include <string.h>
 
-int main()
-{
-    char s[4096];
-    uint32_t n;
-    char filename[50];
-    char content[256];
-    int rc;
-    struct ftp_proto_t proto;
-    size_t used;
+#include <CUnit/Basic.h>
 
-    strcpy(filename, "/tmp/filename");
+static char msg[4096];
+
+
+static void print_proto(const struct ftp_proto_t *proto)
+{
+    printf("proto: %d\n\t'%s' (%d)\n\t'%s' (%d)\n", proto->status,
+            proto->src_filename, proto->src_flen,
+            proto->dst_filename, proto->dst_flen);
+}
+
+int init_suite()
+{
+    uint32_t n;
+    char src_filename[50];
+    char dst_filename[50];
+    char content[256];
+    char *s;
+
+    strcpy(src_filename, "file");
+    strcpy(dst_filename, "file");
     strcpy(content, "1234567890abcdefghijklmnopqrstuvwxyz");
 
-    /* store filename */
-    n = strlen(filename);
-    strcpy(s + sizeof(n), filename);
-    /* store file content */
-    strcpy(s + sizeof(n) + n, content);
-    /* store filename length */
+    s = msg;
+
+    /* store src_filename length */
+    n = strlen(src_filename);
     n = htonl(n);
     memcpy(s, &n, sizeof(n));
+    s += sizeof(n);
 
+    /* store src_filename */
+    strcpy(s, src_filename);
+    s += strlen(src_filename);
 
-    if ((rc = ftp_proto_parse_header(s, 2, &proto, &used)) < 0) {
-        fprintf(stderr, "failed to parse message\n");
-        return EXIT_FAILURE;
-    }
-    else if (rc == 1) {
-        fprintf(stderr, "parsed incomplete message\n");
-        return EXIT_FAILURE;
-    }
-    if (proto.status != FTP_HEADER_NEED_SIZE) {
-        fprintf(stderr, "wrong proto status: %d\n", proto.status);
-        return EXIT_FAILURE;
+    /* store dst_filename length */
+    n = strlen(dst_filename);
+    n = htonl(n);
+    memcpy(s, &n, sizeof(n));
+    s += sizeof(n);
+
+    /* store dst_filename */
+    strcpy(s, dst_filename);
+    s += strlen(dst_filename);
+
+    /* store file content */
+    strcpy(s, content);
+
+    return 0;
+}
+
+int clean_suite()
+{
+    return 0;
+}
+
+void test()
+{
+    struct ftp_proto_t proto;
+    size_t used;
+    char *s = msg;
+    int n;
+
+    memset(&proto, 0, sizeof(proto));
+
+    n = 2;
+    CU_ASSERT_FATAL(0 == ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_FATAL(FTP_HEADER_NEED_SRC_LEN == proto.status);
+    s += n;
+    print_proto(&proto);
+
+    n = 4;
+    CU_ASSERT_FATAL(0 == ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_FATAL(FTP_HEADER_NEED_SRC_NAME == proto.status);
+    s += n;
+    print_proto(&proto);
+
+    n = 4;
+    CU_ASSERT_FATAL(0 == ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_FATAL(FTP_HEADER_NEED_DST_LEN == proto.status);
+    s += n;
+    print_proto(&proto);
+
+    n = 4;
+    CU_ASSERT_FATAL(0 == ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_FATAL(FTP_HEADER_NEED_DST_NAME == proto.status);
+    s += n;
+    print_proto(&proto);
+
+    n = 4;
+    CU_ASSERT_FATAL(1 == ftp_proto_parse_header(s, n, &proto, &used));
+    CU_ASSERT_FATAL(FTP_HEADER_COMPLETED == proto.status);
+    s += n;
+    print_proto(&proto);
+}
+
+int main()
+{
+    CU_pSuite pSuite = NULL;
+
+    if (CU_initialize_registry() != CUE_SUCCESS) {
+        return CU_get_error();
     }
 
+    pSuite = CU_add_suite("suite", init_suite, clean_suite);
+    if (pSuite == NULL) {
+        CU_cleanup_registry();
+        return CU_get_error();
+    }
 
-    if ((rc = ftp_proto_parse_header(s + 2, 8, &proto, &used)) < 0) {
-        fprintf(stderr, "failed to parse message\n");
-        return EXIT_FAILURE;
+    if (CU_add_test(pSuite, "parsing test", test) == NULL) {
+        CU_cleanup_registry();
+        return CU_get_error();
     }
-    else if (rc == 1) {
-        fprintf(stderr, "parsed incomplete message\n");
-        printf("proto.flen is %d\n", proto.flen);
-        printf("proto.filename is '%s'\n", proto.filename);
-        return EXIT_FAILURE;
-    }
-    if (proto.status != FTP_HEADER_NEED_NAME) {
-        fprintf(stderr, "wrong proto status: %d\n", proto.status);
-        return EXIT_FAILURE;
-    }
-    printf("proto.flen is %d\n", proto.flen);
-    printf("proto.filename is '%s'\n", proto.filename);
 
+    CU_basic_set_mode(CU_BRM_VERBOSE);
+    CU_basic_run_tests();
 
-    if ((rc = ftp_proto_parse_header(s + 10, 10, &proto, &used)) < 0) {
-        fprintf(stderr, "failed to parse message\n");
-        return EXIT_FAILURE;
-    }
-    else if (rc == 0) {
-        fprintf(stderr, "did not parse complete message\n");
-        return EXIT_FAILURE;
-    }
-    printf("proto.filename is '%s'\n", proto.filename);
-    printf("used = %ld\n", used);
-
-    return EXIT_SUCCESS;
+    CU_cleanup_registry();
+    return CU_get_error();
 }
