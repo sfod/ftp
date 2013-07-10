@@ -257,7 +257,7 @@ static void main_loop(int listen_fd)
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
         struct file_t *file, int cl_idx)
 {
-    size_t used;
+    size_t used = 0;
     int rc;
 
     switch (proto->status) {
