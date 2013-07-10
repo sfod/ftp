@@ -27,6 +27,7 @@
 #define FTP_POLL_TIMEOUT 1000
 #define FTP_AVAILABLE_FD -1
 #define FTP_OPEN_MAX 1024
+#define FTP_WORKERS_NUMBER 10
 
 #define FTP_SOCK_BUF_SIZE 4096
 
@@ -45,7 +46,8 @@ struct req_t {
 
 
 static void main_loop(int listen_fd);
-void *pthread_sighandler(void *p);
+static void *pthread_sighandler(void *p);
+static void *pthread_process_req(void *p);
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
         struct file_t *file, int cl_idx);
 static void write_data(const char *s, size_t n, const struct file_t *file,
@@ -88,6 +90,18 @@ int main()
         return EXIT_FAILURE;
     }
 
+    pthread_t req_tids[FTP_WORKERS_NUMBER];
+    for (int i = 0; i < FTP_WORKERS_NUMBER; ++i) {
+        if (pthread_create(req_tids + i, NULL, pthread_process_req, NULL) < 0) {
+            perror("pthread_create");
+            return EXIT_FAILURE;
+        }
+        if (pthread_detach(req_tids[i]) < 0) {
+            perror("pthread_detach");
+            return EXIT_FAILURE;
+        }
+    }
+
     int listen_fd;
     if (init_listen_fd(&listen_fd) < 0) {
         fprintf(stderr, "failed to initialize socket\n");
@@ -99,7 +113,7 @@ int main()
     return EXIT_SUCCESS;
 }
 
-void *pthread_sighandler(void *p)
+static void *pthread_sighandler(void *p)
 {
     sigset_t *set = (sigset_t *) p;
     int sig;
@@ -124,8 +138,9 @@ void *pthread_sighandler(void *p)
     return NULL;
 }
 
-void *pthread_write_file(void *p)
+static void *pthread_process_req(void *p)
 {
+    struct req_t *req;
     struct timespec ts_sem = {0, 0};
 
     while (g_is_running) {
@@ -137,7 +152,12 @@ void *pthread_write_file(void *p)
         }
 
         pthread_mutex_lock(&g_mutex_req);
+        req = TAILQ_FIRST(&g_req_queue);
+        TAILQ_REMOVE(&g_req_queue, req, entries);
         pthread_mutex_unlock(&g_mutex_req);
+
+
+        printf("printing %ld bytes for client %d\n", req->n, req->cl_idx);
     }
 
     return NULL;
