@@ -54,7 +54,7 @@ int ftp_proto_parse_header(const char *s, size_t n, struct ftp_proto_t *proto,
         if (proto->dst_flen > FTP_MAX_HEADER_SIZE - FTP_HEADER_LEN_SIZE) {
             return -1;
         }
-        ts = s + tused;
+        ts += tused;
         n -= tused;
         proto->hlen = 0;
         /* fall through */
