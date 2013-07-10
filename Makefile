@@ -12,6 +12,7 @@ ALL_OBJECTS = $(SERVER_OBJECTS) $(CLIENT_OBJECTS) $(UTIL_OBJECTS) $(TEST_OBJECTS
 INC_DIRS = ./src
 
 LIBS := pthread
+TEST_LIBS := cunit
 CC_FLAGS := -W -Wall -Wextra -pedantic -fstrict-aliasing -std=c99 -O0 -ggdb
 
 
@@ -29,7 +30,7 @@ $(BUILD_DIR)/ftpclient: $(CLIENT_OBJECTS) $(UTIL_OBJECTS)
 	$(CC) $(CC_FLAGS) -o $@ $^ $(addprefix -l, $(LIBS))
 
 $(BUILD_DIR)/test_ftp_proto: $(TEST_OBJECTS) $(UTIL_OBJECTS)
-	$(CC) $(CC_FLAGS) -o $@ $^ $(addprefix -l, $(LIBS))
+	$(CC) $(CC_FLAGS) -o $@ $^ $(addprefix -l, $(TEST_LIBS))
 
 # pull in dependency info for existing .o files
 -include $(ALL_OBJECTS:.o=.d)

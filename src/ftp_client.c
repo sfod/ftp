@@ -13,18 +13,25 @@
 #define FTP_SOCK_BUF_SIZE 4096
 
 
-static int transfer_file(int cl_fd, const char *filename);
-static int send_header(int cl_fd, const char *filename);
+static int transfer_file(int cl_fd, const char *src_file, const char *dst_file);
+static int send_header(int cl_fd, const char *src_file, const char *dst_file);
 
 int main(int argc, char **argv)
 {
     int cl_fd;
     struct sockaddr_in servaddr;
+    const char *host;
+    const char *src_file;
+    const char *dst_file;
 
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <host> <filename>\n", argv[0]);
+    if (argc != 4) {
+        fprintf(stderr, "Usage: %s <host> <src_file> <dst_file>\n", argv[0]);
         return EXIT_FAILURE;
     }
+
+    host = argv[1];
+    src_file = argv[2];
+    dst_file = argv[3];
 
     if ((cl_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");
@@ -34,8 +41,8 @@ int main(int argc, char **argv)
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(FTP_PORT);
-    if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) != 1) {
-        fprintf(stderr, "invalid host: '%s'\n", argv[1]);
+    if (inet_pton(AF_INET, host, &servaddr.sin_addr) != 1) {
+        fprintf(stderr, "invalid host: '%s'\n", host);
         return EXIT_FAILURE;
     }
 
@@ -44,8 +51,8 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (transfer_file(cl_fd, argv[2]) < 0) {
-        fprintf(stderr, "failed to transfer %s\n", argv[2]);
+    if (transfer_file(cl_fd, src_file, dst_file) < 0) {
+        fprintf(stderr, "failed to transfer file %s\n", src_file);
     }
 
     close(cl_fd);
@@ -53,7 +60,7 @@ int main(int argc, char **argv)
     return EXIT_SUCCESS;
 }
 
-static int transfer_file(int cl_fd, const char *filename)
+static int transfer_file(int cl_fd, const char *src_file, const char *dst_file)
 {
     FILE *fh;
     char buf[FTP_SOCK_BUF_SIZE];
@@ -61,12 +68,12 @@ static int transfer_file(int cl_fd, const char *filename)
     int rc;
 
 
-    if (send_header(cl_fd, filename) < 0) {
+    if (send_header(cl_fd, src_file, dst_file) < 0) {
         fprintf(stderr, "failed to send header\n");
         return -1;
     }
 
-    fh = fopen(filename, "r");
+    fh = fopen(src_file, "r");
     if (fh == NULL) {
         perror("fopen");
         return -1;
@@ -90,19 +97,28 @@ static int transfer_file(int cl_fd, const char *filename)
     return rc;
 }
 
-static int send_header(int cl_fd, const char *filename)
+static int send_header(int cl_fd, const char *src_file, const char *dst_file)
 {
     uint32_t n;
 
-    n = strlen(filename);
+    n = strlen(src_file);
     n = htonl(n);
-
     if (send(cl_fd, &n, sizeof(n), 0) < 0) {
         perror("send");
         return -1;
     }
+    if (send(cl_fd, src_file, strlen(src_file), 0) < 0) {
+        perror("send");
+        return -1;
+    }
 
-    if (send(cl_fd, filename, strlen(filename), 0) < 0) {
+    n = strlen(dst_file);
+    n = htonl(n);
+    if (send(cl_fd, &n, sizeof(n), 0) < 0) {
+        perror("send");
+        return -1;
+    }
+    if (send(cl_fd, dst_file, strlen(dst_file), 0) < 0) {
         perror("send");
         return -1;
     }
