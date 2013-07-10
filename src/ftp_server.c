@@ -24,7 +24,7 @@
 #include "ftp_proto.h"
 
 
-#define FTP_INF_TIME -1
+#define FTP_POLL_TIMEOUT 1000
 #define FTP_AVAILABLE_FD -1
 #define FTP_OPEN_MAX 1024
 
@@ -164,7 +164,10 @@ static void main_loop(int listen_fd)
     memset(files, 0, sizeof(files));
 
     while (g_is_running) {
-        nready = poll(fds, nfds, FTP_INF_TIME);
+        nready = poll(fds, nfds, FTP_POLL_TIMEOUT);
+        if (nready == 0) {
+            continue;
+        }
         if (nready < 0) {
             perror("poll");
             exit(EXIT_FAILURE);
