@@ -13,13 +13,13 @@ int ftp_proto_parse_header(const char *s, size_t n, struct ftp_proto_t *proto,
     switch (proto->status) {
     case FTP_HEADER_NEED_SRC_LEN:
         if (proto->hlen + n < FTP_HEADER_LEN_SIZE) {
-            memcpy((char *) &proto->src_flen + proto->hlen, s, n);
+            memcpy((char *) &proto->src_flen + proto->hlen, ts, n);
             proto->hlen += n;
             proto->status = FTP_HEADER_NEED_SRC_LEN;
             return 0;
         }
         tused = FTP_HEADER_LEN_SIZE - proto->hlen;
-        memcpy((char *) &proto->src_flen + proto->hlen, s, tused);
+        memcpy((char *) &proto->src_flen + proto->hlen, ts, tused);
         proto->src_flen = ntohl(proto->src_flen);
         if (proto->src_flen > FTP_MAX_HEADER_SIZE - FTP_HEADER_LEN_SIZE) {
             return -1;
@@ -43,13 +43,13 @@ int ftp_proto_parse_header(const char *s, size_t n, struct ftp_proto_t *proto,
         /* fall through */
     case FTP_HEADER_NEED_DST_LEN:
         if (proto->hlen + n < FTP_HEADER_LEN_SIZE) {
-            memcpy((char *) &proto->dst_flen + proto->hlen, s, n);
+            memcpy((char *) &proto->dst_flen + proto->hlen, ts, n);
             proto->hlen += n;
             proto->status = FTP_HEADER_NEED_DST_LEN;
             return 0;
         }
         tused = FTP_HEADER_LEN_SIZE - proto->hlen;
-        memcpy((char *) &proto->dst_flen + proto->hlen, s, tused);
+        memcpy((char *) &proto->dst_flen + proto->hlen, ts, tused);
         proto->dst_flen = ntohl(proto->dst_flen);
         if (proto->dst_flen > FTP_MAX_HEADER_SIZE - FTP_HEADER_LEN_SIZE) {
             return -1;
