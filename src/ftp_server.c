@@ -44,10 +44,18 @@ struct req_t {
     TAILQ_ENTRY(req_t) entries;
 };
 
+struct cl_t {
+    int idx;
+    TAILQ_ENTRY(cl_t) entries;
+};
+
 
 static void main_loop(int listen_fd);
 static void *pthread_sighandler(void *p);
 static void *pthread_process_req(void *p);
+static void invalidate_client(int cl_idx);
+static void clean_client(struct pollfd *fd, struct file_t *file,
+        struct ftp_proto_t *proto);
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
         struct file_t *file, int cl_idx);
 static void write_data(const char *s, size_t n, const struct file_t *file,
@@ -57,17 +65,25 @@ static int set_nonblocking_mode(int fd);
 
 
 pthread_mutex_t g_mutex_req;
+pthread_mutex_t g_mutex_cl;
 sem_t g_sem_req;
 
 TAILQ_HEAD(, req_t) g_req_queue;
+TAILQ_HEAD(, cl_t) g_cl_queue;
 
 volatile int g_is_running = 1;
 
 int main()
 {
     TAILQ_INIT(&g_req_queue);
+    TAILQ_INIT(&g_cl_queue);
 
     if (pthread_mutex_init(&g_mutex_req, NULL) < 0) {
+        perror("pthread_mutex_init");
+        return EXIT_FAILURE;
+    }
+
+    if (pthread_mutex_init(&g_mutex_cl, NULL) < 0) {
         perror("pthread_mutex_init");
         return EXIT_FAILURE;
     }
@@ -159,6 +175,7 @@ static void *pthread_process_req(void *p)
         if (fwrite(req->s, sizeof(*req->s), req->n, req->file.fh)
                 != req->n * sizeof(*req->s)) {
             fprintf(stderr, "failed to write data\n");
+            invalidate_client(req->cl_idx);
         }
 
         free(req->s);
@@ -181,6 +198,7 @@ static void main_loop(int listen_fd)
     char buf[FTP_SOCK_BUF_SIZE];
     ssize_t n;
     int i;
+    struct cl_t *cl;
 
     fds[0].fd = listen_fd;
     fds[0].events = POLLIN;
@@ -191,6 +209,15 @@ static void main_loop(int listen_fd)
     memset(files, 0, sizeof(files));
 
     while (g_is_running) {
+        /* check if one of client's transferring failed */
+        if (!TAILQ_EMPTY(&g_cl_queue)) {
+            pthread_mutex_lock(&g_mutex_cl);
+            TAILQ_FOREACH(cl, &g_cl_queue, entries) {
+                clean_client(fds + cl->idx, files + cl->idx, protos + cl->idx);
+            }
+            pthread_mutex_unlock(&g_mutex_cl);
+        }
+
         nready = poll(fds, nfds, FTP_POLL_TIMEOUT);
         if (nready == 0) {
             continue;
@@ -233,20 +260,15 @@ static void main_loop(int listen_fd)
             if (fds[i].revents & POLLIN) {
                 if ((n = recv(fds[i].fd, buf, sizeof(buf), 0)) < 0) {
                     perror("recv");
-                    close(fds[i].fd);
-                    fds[i].fd = FTP_AVAILABLE_FD;
-                    memset(protos + i, 0, sizeof(protos[i]));
+                    clean_client(fds + i, files + i, protos + i);
                 }
                 else if (n == 0) {
                     printf("client disconnected\n");
-                    fds[i].fd = FTP_AVAILABLE_FD;
-                    memset(protos + i, 0, sizeof(protos[i]));
-                    fclose(files[i].fh);
+                    clean_client(fds + i, files + i, protos + i);
                 }
                 else if (process_client_data(buf, n, protos + i, files + i, i) < 0) {
                     fprintf(stderr, "failed to parse client data\n");
-                    close(fds[i].fd);
-                    fds[i].fd = FTP_AVAILABLE_FD;
+                    clean_client(fds + i, files + i, protos + i);
                 }
 
                 if (--nready <= 0) {
@@ -257,6 +279,27 @@ static void main_loop(int listen_fd)
     }
 
     shutdown(listen_fd, SHUT_RDWR);
+}
+
+static void clean_client(struct pollfd *fd, struct file_t *file,
+        struct ftp_proto_t *proto)
+{
+    close(fd->fd);
+    fd->fd = FTP_AVAILABLE_FD;
+    if (file->fh != NULL) {
+        fclose(file->fh);
+        file->fh = NULL;
+    }
+    memset(proto, 0, sizeof(*proto));
+}
+
+static void invalidate_client(int cl_idx)
+{
+    struct cl_t *cl = malloc(sizeof(struct cl_t));
+    cl->idx = cl_idx;
+    pthread_mutex_lock(&g_mutex_cl);
+    TAILQ_INSERT_TAIL(&g_cl_queue, cl, entries);
+    pthread_mutex_unlock(&g_mutex_cl);
 }
 
 static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
