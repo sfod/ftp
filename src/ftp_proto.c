@@ -27,6 +27,7 @@ int ftp_proto_parse_header(const char *s, size_t n, struct ftp_proto_t *proto,
         ts += tused;
         n -= tused;
         proto->hlen = 0;
+        *used += tused;
         /* fall through */
     case FTP_HEADER_NEED_SRC_NAME:
         if (n + proto->hlen < proto->src_flen) {
@@ -40,6 +41,7 @@ int ftp_proto_parse_header(const char *s, size_t n, struct ftp_proto_t *proto,
         ts += tused;
         n -= tused;
         proto->hlen = 0;
+        *used += tused;
         /* fall through */
     case FTP_HEADER_NEED_DST_LEN:
         if (proto->hlen + n < FTP_HEADER_LEN_SIZE) {
@@ -57,6 +59,7 @@ int ftp_proto_parse_header(const char *s, size_t n, struct ftp_proto_t *proto,
         ts += tused;
         n -= tused;
         proto->hlen = 0;
+        *used += tused;
         /* fall through */
     case FTP_HEADER_NEED_DST_NAME:
         if (n + proto->hlen < proto->dst_flen) {
@@ -67,7 +70,7 @@ int ftp_proto_parse_header(const char *s, size_t n, struct ftp_proto_t *proto,
         }
         tused = proto->dst_flen - proto->hlen;
         memcpy(proto->dst_filename + proto->hlen, ts, tused);
-        *used = tused;
+        *used += tused;
         /* fall through */
     case FTP_HEADER_COMPLETED:
         proto->status = FTP_HEADER_COMPLETED;
