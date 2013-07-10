@@ -333,9 +333,9 @@ static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
             }
             if (n - used != 0) {
                 write_data(buf + used, n - used, file, cl_idx);
-                return -1;
             }
         }
+        break;
     }
 
     return 0;
