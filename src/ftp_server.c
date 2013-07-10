@@ -153,7 +153,8 @@ static int process_client_data(char *buf, size_t n, struct ftp_proto_t *proto,
             return -1;
         }
         else if (rc == 1) {
-            if ((file->fh = fopen(proto->filename, "a")) == NULL) {
+            printf("writing to %s\n", proto->dst_filename);
+            if ((file->fh = fopen(proto->dst_filename, "w")) == NULL) {
                 perror("fopen");
                 return -1;
             }
